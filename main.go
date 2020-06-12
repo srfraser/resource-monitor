@@ -99,10 +99,12 @@ func (m *MozProcessStat) Diff(data MozProcessStat) {
 
 // SystemInfo summarises information about the instance
 type SystemInfo struct {
-	TotalMemory      uint64 `json:"vmem_total`
-	TotalSwap        uint64 `json:"swap_total"`
-	CPULogicalCount  int    `json:"cpu_logical_count"`
-	CPUPhysicalCount int    `json:"cpu_physical_count"`
+	TotalMemory      uint64  `json:"vmem_total`
+	AvailableMemory  uint64  `json:"vmem_available`
+	UsedPercent      float64 `json:"vmem_used_percent`
+	TotalSwap        uint64  `json:"swap_total"`
+	CPULogicalCount  int     `json:"cpu_logical_count"`
+	CPUPhysicalCount int     `json:"cpu_physical_count"`
 }
 
 // StatsOutput controls the output format of the report.
@@ -224,6 +226,8 @@ func getSystemInfo() *SystemInfo {
 		log.Fatal(err)
 	}
 	info.TotalMemory = memory.Total
+	info.AvailableMemory = memory.Available
+	info.UsedPercent = memory.UsedPercent
 
 	swap, err := mem.SwapMemory()
 	if err != nil {
