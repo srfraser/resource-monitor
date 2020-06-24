@@ -102,7 +102,7 @@ type SystemMemoryInfo struct {
 	TotalMemory      uint64  `json:"vmem_total`
 	TotalSwap        uint64  `json:"swap_total"`
 	AvailableMemory  uint64  `json:"vmem_available`
-	UsedPercent      float64 `json:"vmem_used_percent`
+	UsedPercent      int `json:"vmem_used_percent`
 }
 
 // SystemInfo summarises information about the instance
@@ -233,7 +233,7 @@ func getSystemInfo() *SystemInfo {
 	}
 	mem_info.TotalMemory = memory.Total
 	mem_info.AvailableMemory = memory.Available
-	mem_info.UsedPercent = memory.UsedPercent
+	mem_info.UsedPercent = int(memory.UsedPercent)
 
 	swap, err := mem.SwapMemory()
 	if err != nil {
