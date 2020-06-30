@@ -97,12 +97,19 @@ func (m *MozProcessStat) Diff(data MozProcessStat) {
 	m.NetworkIO.Fifoout -= data.NetworkIO.Fifoout
 }
 
+// SystemMemoryInfo summarises information about the system memory usage
+type SystemMemoryInfo struct {
+	TotalMemory      uint64  `json:"vmem_total`
+	TotalSwap        uint64  `json:"swap_total"`
+	AvailableMemory  uint64  `json:"vmem_available`
+	UsedPercent      int `json:"vmem_used_percent`
+}
+
 // SystemInfo summarises information about the instance
 type SystemInfo struct {
-	TotalMemory      uint64 `json:"vmem_total`
-	TotalSwap        uint64 `json:"swap_total"`
-	CPULogicalCount  int    `json:"cpu_logical_count"`
-	CPUPhysicalCount int    `json:"cpu_physical_count"`
+	MemoryStats      SystemMemoryInfo `json:"memory_stats"`
+	CPULogicalCount  int              `json:"cpu_logical_count"`
+	CPUPhysicalCount int              `json:"cpu_physical_count"`
 }
 
 // StatsOutput controls the output format of the report.
@@ -218,18 +225,22 @@ func collector(fh *os.File) {
 
 func getSystemInfo() *SystemInfo {
 	info := new(SystemInfo)
+	mem_info := new(SystemMemoryInfo)
 
 	memory, err := mem.VirtualMemory()
 	if err != nil {
 		log.Fatal(err)
 	}
-	info.TotalMemory = memory.Total
+	mem_info.TotalMemory = memory.Total
+	mem_info.AvailableMemory = memory.Available
+	mem_info.UsedPercent = int(memory.UsedPercent)
 
 	swap, err := mem.SwapMemory()
 	if err != nil {
 		log.Fatal(err)
 	}
-	info.TotalSwap = swap.Total
+	mem_info.TotalSwap = swap.Total
+	info.MemoryStats = *mem_info
 
 	cpuLogCount, err := cpu.Counts(true)
 	if err != nil {
