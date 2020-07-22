@@ -1,4 +1,4 @@
-module mozilla.com/sfraser/moztaskmonitor
+module mozilla.com/mozilla-releng/resource-monitor
 
 go 1.14
 
