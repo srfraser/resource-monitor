@@ -1,2 +1,4 @@
+name: gofmt
+on: [push, pull_request]
 - name: Check code formatting using gofmt
   uses: Jerome1337/gofmt-action@v1.0.3
