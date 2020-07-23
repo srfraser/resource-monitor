@@ -1,4 +1,14 @@
 name: gofmt
 on: [push, pull_request]
-- name: Check code formatting using gofmt
-  uses: Jerome1337/gofmt-action@v1.0.3
+jobs:
+  gofmt:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+      with:
+        fetch-depth: 2
+    - run: git checkout HEAD^2
+      if: ${{ github.event_name == 'pull_request' }}
+    - name: Check code formatting using gofmt
+      uses: Jerome1337/gofmt-action@v1.0.3
