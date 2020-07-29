@@ -156,7 +156,13 @@ func collectStatsForWithError(proc *process.Process, withError bool) (*MozProces
 			log.Printf("CPU Times: %s\n", err)
 		}
 	} else {
-		statistics.CPU = CPUTimesStat{cpu.User, cpu.System, cpu.Idle, cpu.Iowait, cpu.Steal}
+		// Three significant digits for the cpu times.
+		statistics.CPU = CPUTimesStat{
+			math.Round(cpu.User*1000) / 1000,
+			math.Round(cpu.System*1000) / 1000,
+			math.Round(cpu.Idle*1000) / 1000,
+			math.Round(cpu.Iowait*1000) / 1000,
+			math.Round(cpu.Steal*1000) / 1000}
 	}
 
 	memory, err := proc.MemoryInfo()
@@ -330,9 +336,8 @@ func processOutput(filename string, outputFilename string) {
 }
 
 func main() {
-
 	outputFilePtr := flag.String("output", "dummy_output_file", "Newline-separated JSON output file")
-	parentProcess := flag.Int("process", 1.0, "Parent Process ID to monitor")
+	parentProcess := flag.Int("process", 1, "Parent Process ID to monitor")
 	collectionInterval := flag.Int("interval", 1.0, "Data collection interval in seconds")
 	flag.Parse()
 
