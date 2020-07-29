@@ -60,7 +60,7 @@ type MozProcessStat struct {
 	Memory       ProcMemoryInfoStat `json:"memory"`  // all uint64
 	CPU          CPUTimesStat       `json:"cpu"`     // all float64
 	DiskIO       ProcDiskIOStat     `json:"disk"`    // all uint64
-	NetworkIO    ProcNetworkIOStat  `json:"network"` // all uint64\
+	NetworkIO    ProcNetworkIOStat  `json:"network"` // all uint64
 	UsedPercent  float64            `json:"system_memory_used_percent"`
 	ProcessCount int                `json:"process_count"`
 }
