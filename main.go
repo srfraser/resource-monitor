@@ -33,9 +33,10 @@ type ProcCPUStat struct {
 
 // ProcMemoryInfoStat is a more limited version of process.MemoryInfoStat
 type ProcMemoryInfoStat struct {
-	RSS  uint64 `json:"rss"`  // bytes
-	VMS  uint64 `json:"vms"`  // bytes
-	Swap uint64 `json:"swap"` // bytes
+	RSS       uint64 `json:"rss"`       // bytes
+	VMS       uint64 `json:"vms"`       // bytes
+	Swap      uint64 `json:"swap"`      // bytes
+	Available uint64 `json:"available"` // bytes
 }
 
 // ProcNetworkIOStat is a more limited version of net.IOCountersStat
@@ -61,10 +62,9 @@ type MozProcessStat struct {
 	CPU             ProcCPUStat       `json:"cpu"`     // all float64
 	DiskIO          ProcDiskIOStat     `json:"disk"`    // all uint64
 	NetworkIO       ProcNetworkIOStat  `json:"network"` // all uint64
-	AvailableMemory uint64             `json:"available_memory"`
-	UsedPercent     float64            `json:"memory_used_percent"`
-	// AvailableMemory/UsedPercent are kept separate because it's System-wide
-	// and must not be summed
+	UsedPercent  float64            `json:"system_memory_used_percent"`
+	ProcessCount int                `json:"process_count"`
+	ThreadCount  int32              `json:"thread_count"`
 }
 
 // ignore network: fifoin fifoout?
@@ -75,6 +75,7 @@ func (m *MozProcessStat) Add(data MozProcessStat) {
 	m.Memory.RSS += data.Memory.RSS
 	m.Memory.VMS += data.Memory.VMS
 	m.Memory.Swap += data.Memory.Swap
+	// Available memory must not be summed.
 
 	m.CPU.User += data.CPU.User
 	m.CPU.System += data.CPU.System
@@ -185,7 +186,7 @@ func collectStatsForWithError(proc *process.Process, withError bool) (*MozProces
 			log.Printf("MemoryInfo: %s\n", err)
 		}
 	} else {
-		statistics.Memory = ProcMemoryInfoStat{memory.RSS, memory.VMS, memory.Swap}
+		statistics.Memory = ProcMemoryInfoStat{memory.RSS, memory.VMS, memory.Swap, 0}
 	}
 
 	diskio, err := proc.IOCounters()
@@ -231,10 +232,15 @@ func collector(pid int, fh *os.File) {
 	}
 	statistics := new(MozProcessStat)
 	statistics.Timestamp = time.Now().Unix()
+	statistics.ProcessCount = len(processes)
 
 	for _, proc := range processes {
 		procstats := collectStatsFor(proc)
 		statistics.Add(*procstats)
+		threads, err := proc.NumThreads()
+		if err == nil {
+			statistics.ThreadCount += threads
+		}
 	}
 
 	memory, err := mem.VirtualMemory()
@@ -242,7 +248,7 @@ func collector(pid int, fh *os.File) {
 		log.Printf("Unable to collect system memory statistics\n")
 		return
 	}
-	statistics.AvailableMemory = memory.Available
+	statistics.Memory.Available = memory.Available
 	// Round the percentage to 2 decimal places.
 	statistics.UsedPercent = math.Round(memory.UsedPercent*100) / 100
 
