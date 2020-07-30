@@ -57,14 +57,14 @@ type ProcDiskIOStat struct {
 
 // MozProcessStat combines existing structs into one.
 type MozProcessStat struct {
-	Timestamp       int64              `json:"timestamp"`
-	Memory          ProcMemoryInfoStat `json:"memory"`  // all uint64
-	CPU             ProcCPUStat       `json:"cpu"`     // all float64
-	DiskIO          ProcDiskIOStat     `json:"disk"`    // all uint64
-	NetworkIO       ProcNetworkIOStat  `json:"network"` // all uint64
-	UsedPercent     float64            `json:"system_memory_used_percent"`
-	ProcessCount    int                `json:"process_count"`
-	ThreadCount     int32              `json:"thread_count"`
+	Timestamp    int64              `json:"timestamp"`
+	Memory       ProcMemoryInfoStat `json:"memory"`  // all uint64
+	CPU          ProcCPUStat       `json:"cpu"`     // all float64
+	DiskIO       ProcDiskIOStat     `json:"disk"`    // all uint64
+	NetworkIO    ProcNetworkIOStat  `json:"network"` // all uint64
+	UsedPercent  float64            `json:"system_memory_used_percent"`
+	ProcessCount int                `json:"process_count"`
+	ThreadCount  int32              `json:"thread_count"`
 }
 
 // ignore network: fifoin fifoout?
