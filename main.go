@@ -63,6 +63,7 @@ type MozProcessStat struct {
 	NetworkIO    ProcNetworkIOStat  `json:"network"` // all uint64
 	UsedPercent  float64            `json:"system_memory_used_percent"`
 	ProcessCount int                `json:"process_count"`
+	ThreadCount  int32              `json:"thread_count"`
 }
 
 // ignore network: fifoin fifoout?
@@ -222,6 +223,10 @@ func collector(pid int, fh *os.File) {
 	for _, proc := range processes {
 		procstats := collectStatsFor(proc)
 		statistics.Add(*procstats)
+		threads, err := proc.NumThreads()
+		if err == nil {
+			statistics.ThreadCount += threads
+		}
 	}
 
 	memory, err := mem.VirtualMemory()
