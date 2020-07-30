@@ -21,13 +21,14 @@ import (
 // OutputFormatVersion will allow us to filter output files downstream.
 const OutputFormatVersion = '1'
 
-// CPUTimesStat is a more limited version of cpu.TimesStat to save storage space
-type CPUTimesStat struct {
-	User   float64 `json:"user"`
-	System float64 `json:"system"`
-	Idle   float64 `json:"idle"`
-	Iowait float64 `json:"iowait"`
-	Steal  float64 `json:"steal"`
+// ProcCPUStat is a more limited version of cpu.TimesStat to save storage space
+type ProcCPUStat struct {
+	User    float64 `json:"user"`
+	System  float64 `json:"system"`
+	Idle    float64 `json:"idle"`
+	Iowait  float64 `json:"iowait"`
+	Steal   float64 `json:"steal"`
+	Percent float64 `json:"percent"`
 }
 
 // ProcMemoryInfoStat is a more limited version of process.MemoryInfoStat
@@ -57,7 +58,7 @@ type ProcDiskIOStat struct {
 type MozProcessStat struct {
 	Timestamp       int64              `json:"timestamp"`
 	Memory          ProcMemoryInfoStat `json:"memory"`  // all uint64
-	CPU             CPUTimesStat       `json:"cpu"`     // all float64
+	CPU             ProcCPUStat       `json:"cpu"`     // all float64
 	DiskIO          ProcDiskIOStat     `json:"disk"`    // all uint64
 	NetworkIO       ProcNetworkIOStat  `json:"network"` // all uint64
 	AvailableMemory uint64             `json:"available_memory"`
@@ -80,6 +81,7 @@ func (m *MozProcessStat) Add(data MozProcessStat) {
 	m.CPU.Idle += data.CPU.Idle
 	m.CPU.Iowait += data.CPU.Iowait
 	m.CPU.Steal += data.CPU.Steal
+	m.CPU.Percent += data.CPU.Percent
 
 	m.DiskIO.ReadCount += data.DiskIO.ReadCount
 	m.DiskIO.WriteCount += data.DiskIO.WriteCount
@@ -101,6 +103,7 @@ func (m *MozProcessStat) Diff(data MozProcessStat) {
 	m.CPU.Idle -= data.CPU.Idle
 	m.CPU.Iowait -= data.CPU.Iowait
 	m.CPU.Steal -= data.CPU.Steal
+	m.CPU.Percent -= data.CPU.Percent
 
 	m.DiskIO.ReadCount -= data.DiskIO.ReadCount
 	m.DiskIO.WriteCount -= data.DiskIO.WriteCount
@@ -150,6 +153,16 @@ func collectStatsForWithError(proc *process.Process, withError bool) (*MozProces
 
 	statistics := new(MozProcessStat)
 
+	/* Attempting to collect the CPU percentage as well to better query for the
+	instance usage.
+	*/
+	cpu_percent, err := proc.CPUPercent()
+	if err != nil {
+		if withError {
+			log.Printf("CPU Percent: %s\n", err)
+		}
+	}
+
 	cpu, err := proc.Times()
 	if err != nil {
 		if withError {
@@ -157,12 +170,13 @@ func collectStatsForWithError(proc *process.Process, withError bool) (*MozProces
 		}
 	} else {
 		// Three significant digits for the cpu times.
-		statistics.CPU = CPUTimesStat{
+		statistics.CPU = ProcCPUStat{
 			math.Round(cpu.User*1000) / 1000,
 			math.Round(cpu.System*1000) / 1000,
 			math.Round(cpu.Idle*1000) / 1000,
 			math.Round(cpu.Iowait*1000) / 1000,
-			math.Round(cpu.Steal*1000) / 1000}
+			math.Round(cpu.Steal*1000) / 1000,
+			cpu_percent}
 	}
 
 	memory, err := proc.MemoryInfo()
