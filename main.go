@@ -176,7 +176,8 @@ func collectStatsForWithError(proc *process.Process, withError bool) (*MozProces
 			math.Round(cpu.Idle*1000) / 1000,
 			math.Round(cpu.Iowait*1000) / 1000,
 			math.Round(cpu.Steal*1000) / 1000,
-			cpu_percent}
+			// Round the percentage to 2 decimal places.
+			math.Round(cpu_percent*100) / 100}
 	}
 
 	memory, err := proc.MemoryInfo()
