@@ -62,9 +62,9 @@ type MozProcessStat struct {
 	CPU             ProcCPUStat       `json:"cpu"`     // all float64
 	DiskIO          ProcDiskIOStat     `json:"disk"`    // all uint64
 	NetworkIO       ProcNetworkIOStat  `json:"network"` // all uint64
-	UsedPercent  float64            `json:"system_memory_used_percent"`
-	ProcessCount int                `json:"process_count"`
-	ThreadCount  int32              `json:"thread_count"`
+	UsedPercent     float64            `json:"system_memory_used_percent"`
+	ProcessCount    int                `json:"process_count"`
+	ThreadCount     int32              `json:"thread_count"`
 }
 
 // ignore network: fifoin fifoout?
@@ -104,7 +104,6 @@ func (m *MozProcessStat) Diff(data MozProcessStat) {
 	m.CPU.Idle -= data.CPU.Idle
 	m.CPU.Iowait -= data.CPU.Iowait
 	m.CPU.Steal -= data.CPU.Steal
-	m.CPU.Percent -= data.CPU.Percent
 
 	m.DiskIO.ReadCount -= data.DiskIO.ReadCount
 	m.DiskIO.WriteCount -= data.DiskIO.WriteCount
