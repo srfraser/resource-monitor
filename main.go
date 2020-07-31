@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"flag"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"math"
@@ -156,17 +157,17 @@ func collectStatsForWithError(proc *process.Process, withError bool) (*MozProces
 	/* Attempting to collect the CPU percentage as well to better query for the
 	instance usage.
 	*/
-	cpu_percent, err := proc.CPUPercent()
+	cpuPercent, err := proc.CPUPercent()
 	if err != nil {
 		if withError {
-			log.Printf("CPU Percent: %s\n", err)
+			fmt.Printf("CPU Percent: %s\n", err)
 		}
 	}
 
 	cpu, err := proc.Times()
 	if err != nil {
 		if withError {
-			log.Printf("CPU Times: %s\n", err)
+			fmt.Printf("CPU Times: %s\n", err)
 		}
 	} else {
 		// Three significant digits for the cpu times.
@@ -177,13 +178,13 @@ func collectStatsForWithError(proc *process.Process, withError bool) (*MozProces
 			math.Round(cpu.Iowait*1000) / 1000,
 			math.Round(cpu.Steal*1000) / 1000,
 			// Round the percentage to 2 decimal places.
-			math.Round(cpu_percent*100) / 100}
+			math.Round(cpuPercent*100) / 100}
 	}
 
 	memory, err := proc.MemoryInfo()
 	if err != nil {
 		if withError {
-			log.Printf("MemoryInfo: %s\n", err)
+			fmt.Printf("MemoryInfo: %s\n", err)
 		}
 	} else {
 		statistics.Memory = ProcMemoryInfoStat{memory.RSS, memory.VMS, memory.Swap, 0}
@@ -192,7 +193,7 @@ func collectStatsForWithError(proc *process.Process, withError bool) (*MozProces
 	diskio, err := proc.IOCounters()
 	if err != nil {
 		if withError {
-			log.Printf("Disk IO: %s\n", err)
+			fmt.Printf("Disk IO: %s\n", err)
 		}
 	} else {
 		statistics.DiskIO = ProcDiskIOStat{diskio.ReadCount, diskio.WriteCount, diskio.ReadBytes, diskio.WriteBytes}
@@ -202,7 +203,7 @@ func collectStatsForWithError(proc *process.Process, withError bool) (*MozProces
 	netio, err := proc.NetIOCounters(false)
 	if err != nil {
 		if withError {
-			log.Printf("Network IO: %s\n", err)
+			fmt.Printf("Network IO: %s\n", err)
 		}
 	} else {
 		for _, iface := range netio {
@@ -223,12 +224,12 @@ func collectStatsFor(proc *process.Process) *MozProcessStat {
 }
 
 // Run the psutil collection.
-func collector(pid int, fh *os.File) {
+func collector(pid int, fh *os.File) error {
 
 	processes, err := findAllProcesses(pid)
 	if err != nil {
-		log.Fatalf("Unable to find process list, aborting: %v", err)
-		return
+		fmt.Printf("Unable to find process list, aborting: %v", err)
+		return err
 	}
 	statistics := new(MozProcessStat)
 	statistics.Timestamp = time.Now().Unix()
@@ -245,8 +246,8 @@ func collector(pid int, fh *os.File) {
 
 	memory, err := mem.VirtualMemory()
 	if err != nil {
-		log.Printf("Unable to collect system memory statistics\n")
-		return
+		fmt.Printf("Unable to collect system memory statistics\n")
+		return err
 	}
 	statistics.Memory.Available = memory.Available
 	// Round the percentage to 2 decimal places.
@@ -254,14 +255,15 @@ func collector(pid int, fh *os.File) {
 
 	jsonData, err := json.Marshal(statistics)
 	if err != nil {
-		log.Fatalf("Couldn't format data as json: %v", err)
-		return
+		fmt.Printf("Couldn't format data as json: %v", err)
+		return err
 	}
 	_, err = fh.Write(jsonData)
 	if err != nil {
-		log.Fatalf("Failed writing to output file: %s", err)
+		fmt.Printf("Failed writing to output file: %s", err)
 	}
 	fh.WriteString("\n")
+	return nil
 }
 
 func getSystemInfo() *SystemInfo {
@@ -367,7 +369,8 @@ func main() {
 	flag.Visit(func(f *flag.Flag) { seen[f.Name] = true })
 	for _, req := range requiredArgs {
 		if !seen[req] {
-			log.Fatalf("Required argument -%s missing", req)
+			fmt.Printf("Required argument -%s missing", req)
+			return
 		}
 	}
 
@@ -376,45 +379,56 @@ func main() {
 	currentPid := os.Getpid()
 	myself, err := process.NewProcess(int32(currentPid))
 	if err != nil {
-		log.Fatalf("%s", err)
+		fmt.Printf("%s", err)
+		return
 	}
 	_, err = collectStatsForWithError(myself, true)
 	if err != nil {
-		log.Printf("Collection will be missing some data: %s\n", err)
+		fmt.Printf("Collection will be missing some data: %s\n", err)
 	}
 
 	// Set up interval
 	ticker := time.NewTicker(time.Duration(*collectionInterval) * time.Second)
-	done := make(chan bool)
+	done := make(chan bool) // Us telling ticker to stop
+	stop := make(chan bool) // Ticker telling us to stop
 
 	tmpfile, err := ioutil.TempFile("", "")
 	if err != nil {
-		log.Printf("Unable to create temporary file: %s", err)
+		fmt.Printf("Unable to create temporary file: %s", err)
 	}
 	// Don't defer closing of the file as we want to process it in this scope.
 	defer os.Remove(tmpfile.Name())
 
-	go func() {
+	go func(stopParent chan bool) {
 		for {
 			select {
 			case <-done:
 				return
 			case <-ticker.C:
-				// TODO replace with temporary file or directory
-				collector(*parentProcess, tmpfile)
+				err := collector(*parentProcess, tmpfile)
+				if err != nil {
+					stopParent <- true
+					return
+				}
 			}
 
 		}
 
-	}()
+	}(stop)
 
 	// Carry on until we're told to stop.
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
 
-	<-sigs
+	// Block on either a signal or the ticker telling us it had an error.
+	select {
+	case <-sigs:
+		done <- true
+		break
+	case <-stop:
+		break
+	}
 	ticker.Stop()
-	done <- true
 
 	if err := tmpfile.Close(); err != nil {
 		log.Printf("Unable to close temporary file: %s", err)
