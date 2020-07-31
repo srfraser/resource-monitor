@@ -399,7 +399,7 @@ func main() {
 	// Don't defer closing of the file as we want to process it in this scope.
 	defer os.Remove(tmpfile.Name())
 
-	go func(s chan bool) {
+	go func(stopParent chan bool) {
 		for {
 			select {
 			case <-done:
@@ -407,7 +407,7 @@ func main() {
 			case <-ticker.C:
 				err := collector(*parentProcess, tmpfile)
 				if err != nil {
-					s <- true
+					stopParent <- true
 					return
 				}
 			}
