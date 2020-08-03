@@ -34,10 +34,9 @@ type ProcCPUStat struct {
 
 // ProcMemoryInfoStat is a more limited version of process.MemoryInfoStat
 type ProcMemoryInfoStat struct {
-	RSS       uint64 `json:"rss"`       // bytes
-	VMS       uint64 `json:"vms"`       // bytes
-	Swap      uint64 `json:"swap"`      // bytes
-	Available uint64 `json:"available"` // bytes
+	RSS  uint64 `json:"rss"`  // bytes
+	VMS  uint64 `json:"vms"`  // bytes
+	Swap uint64 `json:"swap"` // bytes
 }
 
 // ProcNetworkIOStat is a more limited version of net.IOCountersStat
@@ -57,15 +56,37 @@ type ProcDiskIOStat struct {
 }
 
 // MozProcessStat combines existing structs into one.
+// CPU is a map so that we can store per-process data.
 type MozProcessStat struct {
-	Timestamp    int64              `json:"timestamp"`
-	Memory       ProcMemoryInfoStat `json:"memory"`  // all uint64
-	CPU          ProcCPUStat        `json:"cpu"`     // all float64
-	DiskIO       ProcDiskIOStat     `json:"disk"`    // all uint64
-	NetworkIO    ProcNetworkIOStat  `json:"network"` // all uint64
-	UsedPercent  float64            `json:"system_memory_used_percent"`
-	ProcessCount int                `json:"process_count"`
-	ThreadCount  int32              `json:"thread_count"`
+	Memory    ProcMemoryInfoStat `json:"memory"`  // all uint64
+	CPU       ProcCPUStat        `json:"cpu"`     // all float64
+	DiskIO    ProcDiskIOStat     `json:"disk"`    // all uint64
+	NetworkIO ProcNetworkIOStat  `json:"network"` // all uint64
+}
+
+// MozCollectedStat combines existing structs into one.
+// CPU is a map so that we can store per-process data.
+type MozCollectedStat struct {
+	Timestamp       int64                     `json:"timestamp"`
+	Processes       map[int32]*MozProcessStat `json:"process_stats"`
+	AvailableMemory uint64                    `json:"available_memory"` // bytes
+	UsedPercent     float64                   `json:"system_memory_used_percent"`
+	ProcessCount    int                       `json:"process_count"`
+	ThreadCount     int32                     `json:"thread_count"`
+}
+
+// FlatMozProcessStat combines existing structs into one.
+// CPU is a map so that we can store per-process data.
+type FlatMozProcessStat struct {
+	Timestamp       int64              `json:"timestamp"`
+	Memory          ProcMemoryInfoStat `json:"memory"`           // all uint64
+	AvailableMemory uint64             `json:"available_memory"` // bytes
+	CPU             ProcCPUStat        `json:"cpu"`              // all float64
+	DiskIO          ProcDiskIOStat     `json:"disk"`             // all uint64
+	NetworkIO       ProcNetworkIOStat  `json:"network"`          // all uint64
+	UsedPercent     float64            `json:"system_memory_used_percent"`
+	ProcessCount    int                `json:"process_count"`
+	ThreadCount     int32              `json:"thread_count"`
 }
 
 // ignore network: fifoin fifoout?
@@ -78,12 +99,12 @@ func (m *MozProcessStat) Add(data MozProcessStat) {
 	m.Memory.Swap += data.Memory.Swap
 	// Available memory must not be summed.
 
-	m.CPU.User += data.CPU.User
-	m.CPU.System += data.CPU.System
-	m.CPU.Idle += data.CPU.Idle
-	m.CPU.Iowait += data.CPU.Iowait
-	m.CPU.Steal += data.CPU.Steal
-	m.CPU.Percent += data.CPU.Percent
+	// m.CPU.User += data.CPU.User
+	// m.CPU.System += data.CPU.System
+	// m.CPU.Idle += data.CPU.Idle
+	// m.CPU.Iowait += data.CPU.Iowait
+	// m.CPU.Steal += data.CPU.Steal
+	// m.CPU.Percent += data.CPU.Percent
 
 	m.DiskIO.ReadCount += data.DiskIO.ReadCount
 	m.DiskIO.WriteCount += data.DiskIO.WriteCount
@@ -96,25 +117,46 @@ func (m *MozProcessStat) Add(data MozProcessStat) {
 	m.NetworkIO.PacketsRecv += data.NetworkIO.PacketsRecv
 }
 
-// Diff the provided MozProcessStat to the current one.
-func (m *MozProcessStat) Diff(data MozProcessStat) {
+// StatDiff the provided MozProcessStat to the current one.
+func flattenStat(prev, current MozCollectedStat) FlatMozProcessStat {
 	// Memory fields are absolute, not a sum, so don't diff those.
+	newStat := FlatMozProcessStat{}
 
-	m.CPU.User -= data.CPU.User
-	m.CPU.System -= data.CPU.System
-	m.CPU.Idle -= data.CPU.Idle
-	m.CPU.Iowait -= data.CPU.Iowait
-	m.CPU.Steal -= data.CPU.Steal
+	newStat.Timestamp = current.Timestamp
+	newStat.UsedPercent = current.UsedPercent
+	newStat.ProcessCount = current.ProcessCount
+	newStat.ThreadCount = current.ThreadCount
+	newStat.AvailableMemory = current.AvailableMemory
 
-	m.DiskIO.ReadCount -= data.DiskIO.ReadCount
-	m.DiskIO.WriteCount -= data.DiskIO.WriteCount
-	m.DiskIO.ReadBytes -= data.DiskIO.ReadBytes
-	m.DiskIO.WriteBytes -= data.DiskIO.WriteBytes
+	for pid, currentProcess := range current.Processes {
+		// 0-defaults mean we don't worry if we've not seen it before
+		prevProcess, ok := prev.Processes[pid]
+		if ok != true {
+			prevProcess = &MozProcessStat{}
+		}
 
-	m.NetworkIO.BytesSent -= data.NetworkIO.BytesSent
-	m.NetworkIO.BytesRecv -= data.NetworkIO.BytesRecv
-	m.NetworkIO.PacketsSent -= data.NetworkIO.PacketsSent
-	m.NetworkIO.PacketsRecv -= data.NetworkIO.PacketsRecv
+		newStat.Memory.RSS += currentProcess.Memory.RSS
+		newStat.Memory.VMS += currentProcess.Memory.VMS
+		newStat.Memory.Swap += currentProcess.Memory.Swap
+
+		newStat.CPU.User += currentProcess.CPU.User - prevProcess.CPU.User
+		newStat.CPU.System += currentProcess.CPU.System - prevProcess.CPU.System
+		newStat.CPU.Idle += currentProcess.CPU.Idle - prevProcess.CPU.Idle
+		newStat.CPU.Iowait += currentProcess.CPU.Iowait - prevProcess.CPU.Iowait
+		newStat.CPU.Steal += currentProcess.CPU.Steal - prevProcess.CPU.Steal
+
+		newStat.DiskIO.ReadCount += currentProcess.DiskIO.ReadCount - prevProcess.DiskIO.ReadCount
+		newStat.DiskIO.WriteCount += currentProcess.DiskIO.WriteCount - prevProcess.DiskIO.WriteCount
+		newStat.DiskIO.ReadBytes += currentProcess.DiskIO.ReadBytes - prevProcess.DiskIO.ReadBytes
+		newStat.DiskIO.WriteBytes += currentProcess.DiskIO.WriteBytes - prevProcess.DiskIO.WriteBytes
+
+		newStat.NetworkIO.BytesSent += currentProcess.NetworkIO.BytesSent - prevProcess.NetworkIO.BytesSent
+		newStat.NetworkIO.BytesRecv += currentProcess.NetworkIO.BytesRecv - prevProcess.NetworkIO.BytesRecv
+		newStat.NetworkIO.PacketsSent += currentProcess.NetworkIO.PacketsSent - prevProcess.NetworkIO.PacketsSent
+		newStat.NetworkIO.PacketsRecv += currentProcess.NetworkIO.PacketsRecv - prevProcess.NetworkIO.PacketsRecv
+	}
+
+	return newStat
 }
 
 // SystemMemoryInfo summarises information about the system memory usage
@@ -132,11 +174,11 @@ type SystemInfo struct {
 
 // StatsOutput controls the output format of the report.
 type StatsOutput struct {
-	Version    int64            `json:"version"`
-	Start      int64            `json:"start"`
-	End        int64            `json:"end"`
-	Samples    []MozProcessStat `json:"samples"`
-	SystemInfo SystemInfo       `json:"system_info"`
+	Version    int64                `json:"version"`
+	Start      int64                `json:"start"`
+	End        int64                `json:"end"`
+	Samples    []FlatMozProcessStat `json:"samples"`
+	SystemInfo SystemInfo           `json:"system_info"`
 }
 
 // findAllProcesses returns the full set of active child processes
@@ -153,7 +195,6 @@ func findAllProcesses(pid int) ([]*process.Process, error) {
 func collectStatsForWithError(proc *process.Process, withError bool) (*MozProcessStat, error) {
 
 	statistics := new(MozProcessStat)
-
 	/* Attempting to collect the CPU percentage as well to better query for the
 	instance usage.
 	*/
@@ -187,7 +228,7 @@ func collectStatsForWithError(proc *process.Process, withError bool) (*MozProces
 			fmt.Printf("MemoryInfo: %s\n", err)
 		}
 	} else {
-		statistics.Memory = ProcMemoryInfoStat{memory.RSS, memory.VMS, memory.Swap, 0}
+		statistics.Memory = ProcMemoryInfoStat{memory.RSS, memory.VMS, memory.Swap}
 	}
 
 	diskio, err := proc.IOCounters()
@@ -231,13 +272,16 @@ func collector(pid int, fh *os.File) error {
 		fmt.Printf("Unable to find process list, aborting: %v", err)
 		return err
 	}
-	statistics := new(MozProcessStat)
+	fmt.Printf("%v\n", processes)
+	statistics := new(MozCollectedStat)
 	statistics.Timestamp = time.Now().Unix()
 	statistics.ProcessCount = len(processes)
+	statistics.Processes = make(map[int32]*MozProcessStat)
 
 	for _, proc := range processes {
+		// TODO Combine these lines
 		procstats := collectStatsFor(proc)
-		statistics.Add(*procstats)
+		statistics.Processes[proc.Pid] = procstats
 		threads, err := proc.NumThreads()
 		if err == nil {
 			statistics.ThreadCount += threads
@@ -249,7 +293,7 @@ func collector(pid int, fh *os.File) error {
 		fmt.Printf("Unable to collect system memory statistics\n")
 		return err
 	}
-	statistics.Memory.Available = memory.Available
+	statistics.AvailableMemory = memory.Available
 	// Round the percentage to 2 decimal places.
 	statistics.UsedPercent = math.Round(memory.UsedPercent*100) / 100
 
@@ -305,7 +349,7 @@ func processOutput(filename string, outputFilename string) {
 	defer fh.Close()
 
 	finalStats := new(StatsOutput)
-	savedRecord := MozProcessStat{}
+	savedRecord := MozCollectedStat{}
 	initialValue := true
 
 	var start int64 = math.MaxInt64
@@ -313,7 +357,8 @@ func processOutput(filename string, outputFilename string) {
 
 	s := bufio.NewScanner(fh)
 	for s.Scan() {
-		var v MozProcessStat
+		var v MozCollectedStat
+
 		data := s.Bytes()
 		if err := json.Unmarshal(data, &v); err != nil {
 			log.Printf("Can't parse json %s\n", data)
@@ -323,8 +368,8 @@ func processOutput(filename string, outputFilename string) {
 			initialValue = false
 		}
 		newSavedRecord := v
-		v.Diff(savedRecord)
-		finalStats.Samples = append(finalStats.Samples, v)
+		sample := flattenStat(savedRecord, v)
+		finalStats.Samples = append(finalStats.Samples, sample)
 		savedRecord = newSavedRecord
 
 		if v.Timestamp < start {
