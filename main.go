@@ -139,6 +139,21 @@ type StatsOutput struct {
 	SystemInfo SystemInfo       `json:"system_info"`
 }
 
+func findChildProcesses(proc *process.Process) ([]*process.Process, error) {
+	children, err := proc.Children()
+	if err != nil {
+		return nil, err
+	}
+	results := append(children, proc)
+	for _, process := range children {
+		descendants, err := findChildProcesses(process)
+		if err == nil {
+			results = append(results, descendants...)
+		}
+	}
+	return results, nil
+}
+
 // findAllProcesses returns the full set of active child processes
 // for the given PID, so we can collect stats on all of them.
 func findAllProcesses(pid int) ([]*process.Process, error) {
@@ -146,8 +161,13 @@ func findAllProcesses(pid int) ([]*process.Process, error) {
 	if err != nil {
 		return nil, err
 	}
-	children, _ := parent.Children()
-	return append(children, parent), nil
+	results := make([]*process.Process, 0)
+	results = append(results, parent)
+	children, err := findChildProcesses(parent)
+	if err == nil {
+		results = append(results, children...)
+	}
+	return results, nil
 }
 
 func collectStatsForWithError(proc *process.Process, withError bool) (*MozProcessStat, error) {
