@@ -130,12 +130,36 @@ type SystemInfo struct {
 	CPUPhysicalCount int              `json:"cpu_physical_count"`
 }
 
+// SampleSummaryInt helps summarisation of uint64 based fields
+type SampleSummaryInt struct {
+	Maximum uint64  `json:"maximum"`
+	Mean    float64 `json:"mean"`
+	Minimum uint64  `json:"minimum"`
+}
+
+// SampleSummaryFloat helps summarisation of float64 based fields
+type SampleSummaryFloat struct {
+	Maximum float64 `json:"maximum"`
+	Mean    float64 `json:"mean"`
+	Minimum float64 `json:"minimum"`
+}
+
+// SampleSummary helps summarisation the more interesting fields.
+type SampleSummary struct {
+	CPUUser         SampleSummaryFloat `json:"cpu_user"`
+	CPUSystem       SampleSummaryFloat `json:"cpu_system"`
+	CPUIowait       SampleSummaryFloat `json:"cpu_iowait"`
+	RSS             SampleSummaryInt   `json:"rss"`
+	AvailableMemory SampleSummaryInt   `json:"available_memory"`
+}
+
 // StatsOutput controls the output format of the report.
 type StatsOutput struct {
 	Version    int64            `json:"version"`
 	Start      int64            `json:"start"`
 	End        int64            `json:"end"`
 	Samples    []MozProcessStat `json:"samples"`
+	Summary    SampleSummary    `json:"summary"`
 	SystemInfo SystemInfo       `json:"system_info"`
 }
 
@@ -297,6 +321,67 @@ func getSystemInfo() *SystemInfo {
 	return info
 }
 
+// Max returns the larger of x or y.
+func Max(x, y uint64) uint64 {
+	if x < y {
+		return y
+	}
+	return x
+}
+
+// Min returns the smaller of x or y.
+func Min(x, y uint64) uint64 {
+	if x > y {
+		return y
+	}
+	return x
+}
+
+func iterMean(currentMean, currentValue float64, itemCount int) float64 {
+	return currentMean + ((currentValue - currentMean) / float64(itemCount))
+}
+
+// find:
+// Maximum used RSS
+// Minimum available RSS
+// Maximum/Average/Minimum number of processes
+// Maximum/Aveage/Minimum number of threads
+// Max/Avg/Min CPU User
+// Max/Avg/Min CPU System
+// Max/Avg/Min CPU IOWait
+func summarise(samples []MozProcessStat) SampleSummary {
+	summaries := new(SampleSummary)
+
+	// Prevent the minimum always being zero
+	summaries.CPUUser.Minimum = math.MaxFloat64
+	summaries.CPUSystem.Minimum = math.MaxFloat64
+	summaries.CPUIowait.Minimum = math.MaxFloat64
+	summaries.RSS.Minimum = math.MaxUint64
+	summaries.AvailableMemory.Minimum = math.MaxUint64
+
+	for index, entry := range samples {
+		summaries.CPUUser.Maximum = math.Max(entry.CPU.User, summaries.CPUUser.Maximum)
+		summaries.CPUUser.Minimum = math.Min(entry.CPU.User, summaries.CPUUser.Minimum)
+		summaries.CPUUser.Mean = iterMean(summaries.CPUUser.Mean, entry.CPU.User, index+1)
+		summaries.CPUSystem.Maximum = math.Max(entry.CPU.System, summaries.CPUSystem.Maximum)
+		summaries.CPUSystem.Minimum = math.Min(entry.CPU.System, summaries.CPUSystem.Minimum)
+		summaries.CPUSystem.Mean = iterMean(summaries.CPUSystem.Mean, entry.CPU.System, index+1)
+
+		summaries.CPUIowait.Maximum = math.Max(entry.CPU.System, summaries.CPUIowait.Maximum)
+		summaries.CPUIowait.Minimum = math.Min(entry.CPU.System, summaries.CPUIowait.Minimum)
+		summaries.CPUIowait.Mean = iterMean(summaries.CPUIowait.Mean, entry.CPU.Iowait, index+1)
+
+		summaries.RSS.Maximum = Max(entry.Memory.RSS, summaries.RSS.Maximum)
+		summaries.RSS.Minimum = Min(entry.Memory.RSS, summaries.RSS.Minimum)
+		summaries.RSS.Mean = iterMean(summaries.RSS.Mean, float64(entry.Memory.RSS), index+1)
+
+		summaries.AvailableMemory.Maximum = Max(entry.Memory.Available, summaries.AvailableMemory.Maximum)
+		summaries.AvailableMemory.Minimum = Min(entry.Memory.Available, summaries.AvailableMemory.Minimum)
+		summaries.AvailableMemory.Mean = iterMean(summaries.AvailableMemory.Mean, float64(entry.Memory.Available), index+1)
+	}
+	return *summaries
+}
+
 func processOutput(filename string, outputFilename string) {
 	fh, err := os.Open(filename)
 	if err != nil {
@@ -342,6 +427,8 @@ func processOutput(filename string, outputFilename string) {
 	finalStats.End = end
 	finalStats.SystemInfo = *getSystemInfo()
 	finalStats.Version = OutputFormatVersion
+
+	finalStats.Summary = summarise(finalStats.Samples)
 
 	jsonData, err := json.MarshalIndent(finalStats, "", "    ")
 	if err != nil {
