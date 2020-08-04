@@ -67,26 +67,26 @@ type MozProcessStat struct {
 // MozCollectedStat combines existing structs into one.
 // CPU is a map so that we can store per-process data.
 type MozCollectedStat struct {
-	Timestamp       int64                     `json:"timestamp"`
-	Processes       map[int32]*MozProcessStat `json:"process_stats"`
-	AvailableMemory uint64                    `json:"available_memory"` // bytes
-	UsedPercent     float64                   `json:"system_memory_used_percent"`
-	ProcessCount    int                       `json:"process_count"`
-	ThreadCount     int32                     `json:"thread_count"`
+	Timestamp         int64                     `json:"timestamp"`
+	Processes         map[int32]*MozProcessStat `json:"process_stats"`
+	AvailableMemory   uint64                    `json:"available_memory"` // bytes
+	MemoryUsedPercent float64                   `json:"system_memory_used_percent"`
+	ProcessCount      int                       `json:"process_count"`
+	ThreadCount       int32                     `json:"thread_count"`
 }
 
 // FlatMozProcessStat combines existing structs into one.
 // CPU is a map so that we can store per-process data.
 type FlatMozProcessStat struct {
-	Timestamp       int64              `json:"timestamp"`
-	Memory          ProcMemoryInfoStat `json:"memory"`           // all uint64
-	AvailableMemory uint64             `json:"available_memory"` // bytes
-	CPU             ProcCPUStat        `json:"cpu"`              // all float64
-	DiskIO          ProcDiskIOStat     `json:"disk"`             // all uint64
-	NetworkIO       ProcNetworkIOStat  `json:"network"`          // all uint64
-	UsedPercent     float64            `json:"system_memory_used_percent"`
-	ProcessCount    int                `json:"process_count"`
-	ThreadCount     int32              `json:"thread_count"`
+	Timestamp         int64              `json:"timestamp"`
+	Memory            ProcMemoryInfoStat `json:"memory"`           // all uint64
+	AvailableMemory   uint64             `json:"available_memory"` // bytes
+	CPU               ProcCPUStat        `json:"cpu"`              // all float64
+	DiskIO            ProcDiskIOStat     `json:"disk"`             // all uint64
+	NetworkIO         ProcNetworkIOStat  `json:"network"`          // all uint64
+	MemoryUsedPercent float64            `json:"system_memory_used_percent"`
+	ProcessCount      int                `json:"process_count"`
+	ThreadCount       int32              `json:"thread_count"`
 }
 
 // ignore network: fifoin fifoout?
@@ -123,7 +123,7 @@ func flattenStat(prev, current MozCollectedStat) FlatMozProcessStat {
 	newStat := FlatMozProcessStat{}
 
 	newStat.Timestamp = current.Timestamp
-	newStat.UsedPercent = current.UsedPercent
+	newStat.MemoryUsedPercent = current.MemoryUsedPercent
 	newStat.ProcessCount = current.ProcessCount
 	newStat.ThreadCount = current.ThreadCount
 	newStat.AvailableMemory = current.AvailableMemory
@@ -295,7 +295,7 @@ func collector(pid int, fh *os.File) error {
 	}
 	statistics.AvailableMemory = memory.Available
 	// Round the percentage to 2 decimal places.
-	statistics.UsedPercent = math.Round(memory.UsedPercent*100) / 100
+	statistics.MemoryUsedPercent = math.Round(memory.UsedPercent*100) / 100
 
 	jsonData, err := json.Marshal(statistics)
 	if err != nil {
