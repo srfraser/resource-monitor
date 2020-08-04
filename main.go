@@ -89,34 +89,6 @@ type FlatMozProcessStat struct {
 	ThreadCount       int32              `json:"thread_count"`
 }
 
-// ignore network: fifoin fifoout?
-
-// Add the provided MozProcessStat to the current one.
-func (m *MozProcessStat) Add(data MozProcessStat) {
-	// Maybe there's a way of doing this with reflect
-	m.Memory.RSS += data.Memory.RSS
-	m.Memory.VMS += data.Memory.VMS
-	m.Memory.Swap += data.Memory.Swap
-	// Available memory must not be summed.
-
-	// m.CPU.User += data.CPU.User
-	// m.CPU.System += data.CPU.System
-	// m.CPU.Idle += data.CPU.Idle
-	// m.CPU.Iowait += data.CPU.Iowait
-	// m.CPU.Steal += data.CPU.Steal
-	// m.CPU.Percent += data.CPU.Percent
-
-	m.DiskIO.ReadCount += data.DiskIO.ReadCount
-	m.DiskIO.WriteCount += data.DiskIO.WriteCount
-	m.DiskIO.ReadBytes += data.DiskIO.ReadBytes
-	m.DiskIO.WriteBytes += data.DiskIO.WriteBytes
-
-	m.NetworkIO.BytesSent += data.NetworkIO.BytesSent
-	m.NetworkIO.BytesRecv += data.NetworkIO.BytesRecv
-	m.NetworkIO.PacketsSent += data.NetworkIO.PacketsSent
-	m.NetworkIO.PacketsRecv += data.NetworkIO.PacketsRecv
-}
-
 // StatDiff the provided MozProcessStat to the current one.
 func flattenStat(prev, current MozCollectedStat) FlatMozProcessStat {
 	// Memory fields are absolute, not a sum, so don't diff those.
