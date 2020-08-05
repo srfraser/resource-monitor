@@ -398,12 +398,13 @@ func summarise(samples []FlatMozProcessStat) SampleSummary {
 		summaries.CPUUser.Maximum = math.Max(entry.CPU.User, summaries.CPUUser.Maximum)
 		summaries.CPUUser.Minimum = math.Min(entry.CPU.User, summaries.CPUUser.Minimum)
 		summaries.CPUUser.Mean = iterMean(summaries.CPUUser.Mean, entry.CPU.User, index+1)
+
 		summaries.CPUSystem.Maximum = math.Max(entry.CPU.System, summaries.CPUSystem.Maximum)
 		summaries.CPUSystem.Minimum = math.Min(entry.CPU.System, summaries.CPUSystem.Minimum)
 		summaries.CPUSystem.Mean = iterMean(summaries.CPUSystem.Mean, entry.CPU.System, index+1)
 
-		summaries.CPUIowait.Maximum = math.Max(entry.CPU.System, summaries.CPUIowait.Maximum)
-		summaries.CPUIowait.Minimum = math.Min(entry.CPU.System, summaries.CPUIowait.Minimum)
+		summaries.CPUIowait.Maximum = math.Max(entry.CPU.Iowait, summaries.CPUIowait.Maximum)
+		summaries.CPUIowait.Minimum = math.Min(entry.CPU.Iowait, summaries.CPUIowait.Minimum)
 		summaries.CPUIowait.Mean = iterMean(summaries.CPUIowait.Mean, entry.CPU.Iowait, index+1)
 
 		summaries.RSS.Maximum = Max(entry.Memory.RSS, summaries.RSS.Maximum)
