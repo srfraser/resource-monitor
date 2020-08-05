@@ -437,7 +437,7 @@ func processOutput(filename string, outputFilename string) {
 
 		data := s.Bytes()
 		if err := json.Unmarshal(data, &v); err != nil {
-			log.Printf("Can't parse json %s\n", data)
+			fmt.Printf("Can't parse json %v\n", data)
 		}
 		if initialValue {
 			savedRecord = v
@@ -456,7 +456,7 @@ func processOutput(filename string, outputFilename string) {
 		}
 	}
 	if s.Err() != nil {
-		log.Printf("Scan error\n")
+		fmt.Printf("Scan error: %v\n", s.Err())
 	}
 
 	finalStats.Start = start
@@ -468,15 +468,15 @@ func processOutput(filename string, outputFilename string) {
 
 	jsonData, err := json.MarshalIndent(finalStats, "", "    ")
 	if err != nil {
-		log.Printf("Marshalling JSON: %s", err)
+		fmt.Printf("Marshalling JSON: %s", err)
 	}
 	err = os.MkdirAll(filepath.Dir(outputFilename), os.ModePerm)
 	if err != nil {
-		log.Printf("%s\n", err)
+		fmt.Printf("%s\n", err)
 	}
 	err = ioutil.WriteFile(outputFilename, jsonData, 0644)
 	if err != nil {
-		log.Printf("%s\n", err)
+		fmt.Printf("%s\n", err)
 	}
 }
 
@@ -554,7 +554,7 @@ func main() {
 	ticker.Stop()
 
 	if err := tmpfile.Close(); err != nil {
-		log.Printf("Unable to close temporary file: %s", err)
+		fmt.Printf("Unable to close temporary file: %s", err)
 	}
 	processOutput(tmpfile.Name(), *outputFilePtr)
 }
