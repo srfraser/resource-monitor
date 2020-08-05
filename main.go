@@ -168,6 +168,7 @@ type SampleSummary struct {
 	CPUPercent      SampleSummaryFloat `json:"cpu_percent"`
 	RSS             SampleSummaryInt   `json:"rss"`
 	AvailableMemory SampleSummaryInt   `json:"available_memory"`
+	MemoryPercent   SampleSummaryFloat `json:"memory_percent"`
 }
 
 // StatsOutput controls the output format of the report.
@@ -398,6 +399,7 @@ func summarise(samples []FlatMozProcessStat) SampleSummary {
 	summaries.CPUPercent.Minimum = math.MaxFloat64
 	summaries.RSS.Minimum = math.MaxUint64
 	summaries.AvailableMemory.Minimum = math.MaxUint64
+	summaries.MemoryPercent.Minimum = math.MaxFloat64
 
 	for index, entry := range samples {
 		summaries.CPUUser.Maximum = math.Max(entry.CPU.User, summaries.CPUUser.Maximum)
@@ -423,6 +425,10 @@ func summarise(samples []FlatMozProcessStat) SampleSummary {
 		summaries.AvailableMemory.Maximum = Max(entry.AvailableMemory, summaries.AvailableMemory.Maximum)
 		summaries.AvailableMemory.Minimum = Min(entry.AvailableMemory, summaries.AvailableMemory.Minimum)
 		summaries.AvailableMemory.Mean = iterMean(summaries.AvailableMemory.Mean, float64(entry.AvailableMemory), index+1)
+
+		summaries.MemoryPercent.Maximum = math.Max(entry.MemoryUsedPercent, summaries.MemoryPercent.Maximum)
+		summaries.MemoryPercent.Minimum = math.Min(entry.MemoryUsedPercent, summaries.MemoryPercent.Minimum)
+		summaries.MemoryPercent.Mean = iterMean(summaries.MemoryPercent.Mean, entry.CPU.Percent, index+1)
 	}
 	return *summaries
 }
