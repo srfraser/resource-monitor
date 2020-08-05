@@ -22,6 +22,16 @@ import (
 // OutputFormatVersion will allow us to filter output files downstream.
 const OutputFormatVersion = '1'
 
+// AvailableStats records which statistics are available on this platform, and
+// so shouldn't cause an error if they're empty.
+type AvailableStats struct {
+	CPUPercent bool
+	CPUTimes   bool
+	Memory     bool
+	DiskIO     bool
+	NetIO      bool
+}
+
 // ProcCPUStat is a more limited version of cpu.TimesStat to save storage space
 type ProcCPUStat struct {
 	User    float64 `json:"user"`
@@ -211,23 +221,21 @@ func findAllProcesses(pid int) ([]*process.Process, error) {
 	return results, nil
 }
 
-func collectStatsForWithError(proc *process.Process, withError bool) (*MozProcessStat, error) {
-
+func collectStatsFor(proc *process.Process, available AvailableStats) (*MozProcessStat, error) {
+	// If we check proc still exists, there is still a race, so let's just gather and test
+	// the results.
 	statistics := new(MozProcessStat)
-	/* Attempting to collect the CPU percentage as well to better query for the
-	instance usage.
-	*/
+	// Attempting to collect the CPU percentage as well to better query for the
+	// instance usage.
 	cpuPercent, err := proc.CPUPercent()
-	if err != nil {
-		if withError {
-			fmt.Printf("CPU Percent: %s\n", err)
-		}
+	if err != nil && available.CPUPercent {
+		return nil, err
 	}
 
 	cpu, err := proc.Times()
 	if err != nil {
-		if withError {
-			fmt.Printf("CPU Times: %s\n", err)
+		if available.CPUTimes {
+			return nil, err
 		}
 	} else {
 		// Three significant digits for the cpu times.
@@ -243,8 +251,8 @@ func collectStatsForWithError(proc *process.Process, withError bool) (*MozProces
 
 	memory, err := proc.MemoryInfo()
 	if err != nil {
-		if withError {
-			fmt.Printf("MemoryInfo: %s\n", err)
+		if available.Memory {
+			return nil, err
 		}
 	} else {
 		statistics.Memory = ProcMemoryInfoStat{memory.RSS, memory.VMS, memory.Swap}
@@ -252,20 +260,21 @@ func collectStatsForWithError(proc *process.Process, withError bool) (*MozProces
 
 	diskio, err := proc.IOCounters()
 	if err != nil {
-		if withError {
-			fmt.Printf("Disk IO: %s\n", err)
+		if available.DiskIO {
+			return nil, err
 		}
 	} else {
 		statistics.DiskIO = ProcDiskIOStat{diskio.ReadCount, diskio.WriteCount, diskio.ReadBytes, diskio.WriteBytes}
 	}
-
 	total := new(ProcNetworkIOStat)
-	netio, err := proc.NetIOCounters(false)
+	netio, err := proc.NetIOCounters(false) // false -> Not per-interface
 	if err != nil {
-		if withError {
-			fmt.Printf("Network IO: %s\n", err)
+		if available.NetIO {
+			return nil, err
 		}
 	} else {
+		// Don't try these additions if there was an error, regardless of whether the error
+		// is expected
 		for _, iface := range netio {
 			total.BytesSent += iface.BytesSent
 			total.BytesRecv += iface.BytesRecv
@@ -275,16 +284,56 @@ func collectStatsForWithError(proc *process.Process, withError bool) (*MozProces
 		statistics.NetworkIO = *total
 	}
 
-	return statistics, err
+	return statistics, nil
 }
 
-func collectStatsFor(proc *process.Process) *MozProcessStat {
-	stats, _ := collectStatsForWithError(proc, false)
-	return stats
+func checkUnavailableStats(proc *process.Process) AvailableStats {
+
+	available := AvailableStats{}
+	_, err := proc.CPUPercent()
+	if err != nil {
+		fmt.Printf("CPU Percent: %s\n", err)
+		available.CPUPercent = false
+	} else {
+		available.CPUPercent = true
+	}
+
+	_, err = proc.Times()
+	if err != nil {
+		fmt.Printf("CPU Times: %s\n", err)
+		available.CPUTimes = false
+	} else {
+		available.CPUTimes = true
+	}
+
+	_, err = proc.MemoryInfo()
+	if err != nil {
+		fmt.Printf("MemoryInfo: %s\n", err)
+		available.Memory = false
+	} else {
+		available.Memory = true
+	}
+
+	_, err = proc.IOCounters()
+	if err != nil {
+		fmt.Printf("Disk IO: %s\n", err)
+		available.DiskIO = false
+	} else {
+		available.DiskIO = true
+	}
+
+	_, err = proc.NetIOCounters(false)
+	if err != nil {
+		fmt.Printf("Network IO: %s\n", err)
+		available.NetIO = false
+	} else {
+		available.NetIO = true
+	}
+	return available
 }
 
 // Run the psutil collection.
-func collector(pid int, fh *os.File) error {
+func collector(pid int, fh *os.File, available AvailableStats) error {
 
 	processes, err := findAllProcesses(pid)
 	if err != nil {
@@ -298,7 +347,11 @@ func collector(pid int, fh *os.File) error {
 
 	for _, proc := range processes {
 		// TODO Combine these lines
-		procstats := collectStatsFor(proc)
+		procstats, err := collectStatsFor(proc, available)
+		if err != nil {
+			// Process probably ended between findAllProcesses and here.
+			continue
+		}
 		statistics.Processes[proc.Pid] = procstats
 		threads, err := proc.NumThreads()
 		if err == nil {
@@ -515,10 +568,7 @@ func main() {
 		fmt.Printf("%s", err)
 		return
 	}
-	_, err = collectStatsForWithError(myself, true)
-	if err != nil {
-		fmt.Printf("Collection will be missing some data: %s\n", err)
-	}
+	available := checkUnavailableStats(myself)
 
 	// Set up interval
 	ticker := time.NewTicker(time.Duration(*collectionInterval) * time.Second)
@@ -538,7 +588,7 @@ func main() {
 			case <-done:
 				return
 			case <-ticker.C:
-				err := collector(*parentProcess, tmpfile)
+				err := collector(*parentProcess, tmpfile, available)
 				if err != nil {
 					stopParent <- true
 					return
