@@ -428,7 +428,7 @@ func summarise(samples []FlatMozProcessStat) SampleSummary {
 
 		summaries.MemoryPercent.Maximum = math.Max(entry.MemoryUsedPercent, summaries.MemoryPercent.Maximum)
 		summaries.MemoryPercent.Minimum = math.Min(entry.MemoryUsedPercent, summaries.MemoryPercent.Minimum)
-		summaries.MemoryPercent.Mean = iterMean(summaries.MemoryPercent.Mean, entry.CPU.Percent, index+1)
+		summaries.MemoryPercent.Mean = iterMean(summaries.MemoryPercent.Mean, entry.MemoryUsedPercent, index+1)
 	}
 	return *summaries
 }
