@@ -55,7 +55,7 @@ type ProcDiskIOStat struct {
 	WriteBytes uint64 `json:"write_bytes"`
 }
 
-// MozProcessStat combines existing structs into one.
+// MozProcessStat combines existing structs into one for a given standalone proc
 // CPU is a map so that we can store per-process data.
 type MozProcessStat struct {
 	Memory    ProcMemoryInfoStat `json:"memory"`  // all uint64
@@ -64,7 +64,8 @@ type MozProcessStat struct {
 	NetworkIO ProcNetworkIOStat  `json:"network"` // all uint64
 }
 
-// MozCollectedStat combines existing structs into one.
+// MozCollectedStat combines existing structs into one. This is used per sample
+// to aggregate all the data collected from the process's generated proc forest
 // CPU is a map so that we can store per-process data.
 type MozCollectedStat struct {
 	Timestamp         int64                     `json:"timestamp"`
@@ -116,6 +117,7 @@ func flattenStat(prev, current MozCollectedStat) FlatMozProcessStat {
 		newStat.CPU.Idle += currentProcess.CPU.Idle - prevProcess.CPU.Idle
 		newStat.CPU.Iowait += currentProcess.CPU.Iowait - prevProcess.CPU.Iowait
 		newStat.CPU.Steal += currentProcess.CPU.Steal - prevProcess.CPU.Steal
+		newStat.CPU.Percent += currentProcess.CPU.Percent
 
 		newStat.DiskIO.ReadCount += currentProcess.DiskIO.ReadCount - prevProcess.DiskIO.ReadCount
 		newStat.DiskIO.WriteCount += currentProcess.DiskIO.WriteCount - prevProcess.DiskIO.WriteCount
