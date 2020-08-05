@@ -163,6 +163,7 @@ type SampleSummary struct {
 	CPUUser         SampleSummaryFloat `json:"cpu_user"`
 	CPUSystem       SampleSummaryFloat `json:"cpu_system"`
 	CPUIowait       SampleSummaryFloat `json:"cpu_iowait"`
+	CPUPercent      SampleSummaryFloat `json:"cpu_percent"`
 	RSS             SampleSummaryInt   `json:"rss"`
 	AvailableMemory SampleSummaryInt   `json:"available_memory"`
 }
@@ -384,6 +385,7 @@ func iterMean(currentMean, currentValue float64, itemCount int) float64 {
 // Max/Avg/Min CPU User
 // Max/Avg/Min CPU System
 // Max/Avg/Min CPU IOWait
+// Max/Avg/Min CPU Percent
 func summarise(samples []FlatMozProcessStat) SampleSummary {
 	summaries := new(SampleSummary)
 
@@ -391,6 +393,7 @@ func summarise(samples []FlatMozProcessStat) SampleSummary {
 	summaries.CPUUser.Minimum = math.MaxFloat64
 	summaries.CPUSystem.Minimum = math.MaxFloat64
 	summaries.CPUIowait.Minimum = math.MaxFloat64
+	summaries.CPUPercent.Minimum = math.MaxFloat64
 	summaries.RSS.Minimum = math.MaxUint64
 	summaries.AvailableMemory.Minimum = math.MaxUint64
 
@@ -406,6 +409,10 @@ func summarise(samples []FlatMozProcessStat) SampleSummary {
 		summaries.CPUIowait.Maximum = math.Max(entry.CPU.Iowait, summaries.CPUIowait.Maximum)
 		summaries.CPUIowait.Minimum = math.Min(entry.CPU.Iowait, summaries.CPUIowait.Minimum)
 		summaries.CPUIowait.Mean = iterMean(summaries.CPUIowait.Mean, entry.CPU.Iowait, index+1)
+
+		summaries.CPUPercent.Maximum = math.Max(entry.CPU.Percent, summaries.CPUPercent.Maximum)
+		summaries.CPUPercent.Minimum = math.Min(entry.CPU.Percent, summaries.CPUPercent.Minimum)
+		summaries.CPUPercent.Mean = iterMean(summaries.CPUPercent.Mean, entry.CPU.Percent, index+1)
 
 		summaries.RSS.Maximum = Max(entry.Memory.RSS, summaries.RSS.Maximum)
 		summaries.RSS.Minimum = Min(entry.Memory.RSS, summaries.RSS.Minimum)
