@@ -45,7 +45,6 @@ type ProcCPUStat struct {
 // ProcMemoryInfoStat is a more limited version of process.MemoryInfoStat
 type ProcMemoryInfoStat struct {
 	RSS  uint64 `json:"rss"`  // bytes
-	VMS  uint64 `json:"vms"`  // bytes
 	Swap uint64 `json:"swap"` // bytes
 }
 
@@ -119,7 +118,6 @@ func flattenStat(prev, current MozCollectedStat) FlatMozProcessStat {
 		}
 
 		newStat.Memory.RSS += currentProcess.Memory.RSS
-		newStat.Memory.VMS += currentProcess.Memory.VMS
 		newStat.Memory.Swap += currentProcess.Memory.Swap
 
 		newStat.CPU.User += currentProcess.CPU.User - prevProcess.CPU.User
@@ -256,7 +254,7 @@ func collectStatsFor(proc *process.Process, available AvailableStats) (*MozProce
 			return nil, err
 		}
 	} else {
-		statistics.Memory = ProcMemoryInfoStat{memory.RSS, memory.VMS, memory.Swap}
+		statistics.Memory = ProcMemoryInfoStat{memory.RSS, memory.Swap}
 	}
 
 	diskio, err := proc.IOCounters()
