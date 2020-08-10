@@ -16,6 +16,7 @@ import (
 
 	"github.com/shirou/gopsutil/cpu"
 	"github.com/shirou/gopsutil/mem"
+	"github.com/shirou/gopsutil/net"
 	"github.com/shirou/gopsutil/process"
 )
 
@@ -48,8 +49,8 @@ type ProcMemoryInfoStat struct {
 	Swap uint64 `json:"swap"` // bytes
 }
 
-// ProcNetworkIOStat is a more limited version of net.IOCountersStat
-type ProcNetworkIOStat struct {
+// MozNetworkIOStat is a more limited version of net.IOCountersStat
+type MozNetworkIOStat struct {
 	BytesSent   uint64 `json:"bytes_sent"`   // number of bytes sent
 	BytesRecv   uint64 `json:"bytes_recv"`   // number of bytes received
 	PacketsSent uint64 `json:"packets_sent"` // number of packets sent
@@ -67,10 +68,9 @@ type ProcDiskIOStat struct {
 // MozProcessStat combines existing structs into one for a given standalone proc
 // CPU is a map so that we can store per-process data.
 type MozProcessStat struct {
-	Memory    ProcMemoryInfoStat `json:"memory"`  // all uint64
-	CPU       ProcCPUStat        `json:"cpu"`     // all float64
-	DiskIO    ProcDiskIOStat     `json:"disk"`    // all uint64
-	NetworkIO ProcNetworkIOStat  `json:"network"` // all uint64
+	Memory ProcMemoryInfoStat `json:"memory"` // all uint64
+	CPU    ProcCPUStat        `json:"cpu"`    // all float64
+	DiskIO ProcDiskIOStat     `json:"disk"`   // all uint64
 }
 
 // MozCollectedStat combines existing structs into one. This is used per sample
@@ -83,6 +83,8 @@ type MozCollectedStat struct {
 	MemoryUsedPercent float64                   `json:"system_memory_used_percent"`
 	ProcessCount      int                       `json:"process_count"`
 	ThreadCount       int32                     `json:"thread_count"`
+	NetworkIO         MozNetworkIOStat          `json:"network"` // all uint64
+
 }
 
 // FlatMozProcessStat combines existing structs into one.
@@ -93,10 +95,10 @@ type FlatMozProcessStat struct {
 	AvailableMemory   uint64             `json:"available_memory"` // bytes
 	CPU               ProcCPUStat        `json:"cpu"`              // all float64
 	DiskIO            ProcDiskIOStat     `json:"disk"`             // all uint64
-	NetworkIO         ProcNetworkIOStat  `json:"network"`          // all uint64
 	MemoryUsedPercent float64            `json:"system_memory_used_percent"`
 	ProcessCount      int                `json:"process_count"`
 	ThreadCount       int32              `json:"thread_count"`
+	NetworkIO         MozNetworkIOStat   `json:"network"` // all uint64
 }
 
 // StatDiff the provided MozProcessStat to the current one.
@@ -109,6 +111,14 @@ func flattenStat(prev, current MozCollectedStat) FlatMozProcessStat {
 	newStat.ProcessCount = current.ProcessCount
 	newStat.ThreadCount = current.ThreadCount
 	newStat.AvailableMemory = current.AvailableMemory
+
+	// Counters, so diff is required
+	newStat.NetworkIO = MozNetworkIOStat{
+		current.NetworkIO.BytesRecv - prev.NetworkIO.BytesRecv,
+		current.NetworkIO.BytesSent - prev.NetworkIO.BytesSent,
+		current.NetworkIO.PacketsRecv - prev.NetworkIO.PacketsRecv,
+		current.NetworkIO.PacketsSent - prev.NetworkIO.PacketsSent,
+	}
 
 	for pid, currentProcess := range current.Processes {
 		// 0-defaults mean we don't worry if we've not seen it before
@@ -131,11 +141,6 @@ func flattenStat(prev, current MozCollectedStat) FlatMozProcessStat {
 		newStat.DiskIO.WriteCount += currentProcess.DiskIO.WriteCount - prevProcess.DiskIO.WriteCount
 		newStat.DiskIO.ReadBytes += currentProcess.DiskIO.ReadBytes - prevProcess.DiskIO.ReadBytes
 		newStat.DiskIO.WriteBytes += currentProcess.DiskIO.WriteBytes - prevProcess.DiskIO.WriteBytes
-
-		newStat.NetworkIO.BytesSent += currentProcess.NetworkIO.BytesSent - prevProcess.NetworkIO.BytesSent
-		newStat.NetworkIO.BytesRecv += currentProcess.NetworkIO.BytesRecv - prevProcess.NetworkIO.BytesRecv
-		newStat.NetworkIO.PacketsSent += currentProcess.NetworkIO.PacketsSent - prevProcess.NetworkIO.PacketsSent
-		newStat.NetworkIO.PacketsRecv += currentProcess.NetworkIO.PacketsRecv - prevProcess.NetworkIO.PacketsRecv
 	}
 
 	return newStat
@@ -265,23 +270,6 @@ func collectStatsFor(proc *process.Process, available AvailableStats) (*MozProce
 	} else {
 		statistics.DiskIO = ProcDiskIOStat{diskio.ReadCount, diskio.WriteCount, diskio.ReadBytes, diskio.WriteBytes}
 	}
-	total := new(ProcNetworkIOStat)
-	netio, err := proc.NetIOCounters(false) // false -> Not per-interface
-	if err != nil {
-		if available.NetIO {
-			return nil, err
-		}
-	} else {
-		// Don't try these additions if there was an error, regardless of whether the error
-		// is expected
-		for _, iface := range netio {
-			total.BytesSent += iface.BytesSent
-			total.BytesRecv += iface.BytesRecv
-			total.PacketsSent += iface.PacketsSent
-			total.PacketsRecv += iface.PacketsRecv
-		}
-		statistics.NetworkIO = *total
-	}
 
 	return statistics, nil
 }
@@ -366,6 +354,21 @@ func collector(pid int, fh *os.File, available AvailableStats) error {
 	statistics.AvailableMemory = memory.Available
 	// Round the percentage to 2 decimal places.
 	statistics.MemoryUsedPercent = math.Round(memory.UsedPercent*100) / 100
+
+	network, err := net.IOCounters(false) // pernic -> false
+	if err != nil {
+		if available.NetIO {
+			fmt.Printf("Unable to collect system network statistics\n")
+			return err
+		}
+	}
+	statistics.NetworkIO = MozNetworkIOStat{}
+	for _, iface := range network {
+		statistics.NetworkIO.BytesSent += iface.BytesSent
+		statistics.NetworkIO.BytesRecv += iface.BytesRecv
+		statistics.NetworkIO.PacketsSent += iface.PacketsSent
+		statistics.NetworkIO.PacketsRecv += iface.PacketsRecv
+	}
 
 	jsonData, err := json.Marshal(statistics)
 	if err != nil {
